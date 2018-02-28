@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <META http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+        <link rel=stylesheet type="text/css" href="stylesheet.css">
+        <script type="text/javascript" src="Common/webgl-utils.js"></script>
+        <script type="text/javascript" src="Common/initShaders.js"></script>
+        <script type="text/javascript" src="Common/MV.js"></script>
+        <script type="text/javascript" src="music_cube.js"></script> 
+        <script type='text/javascript' src='jquery-1.7.js'></script>
+
+<script type='text/javascript'>//<![CDATA[
+$(window).load(function(){
+    var audio;
+    var playlist;
+    var tracks;
+    var current;
+
+    init();
+    function init(){
+        current = 0;
+        audio = $('audio');
+        playlist = $('#playlist');
+        tracks = playlist.find('li a');
+        len = tracks.length - 1;
+        audio[0].volume = .10;
+        playlist.find('a').click(function(e){
+            e.preventDefault();
+            link = $(this);
+            current = link.parent().index();
+            run(link, audio[0]);
+        });
+        audio[0].addEventListener('ended',function(e){
+            current++;
+            if(current == len){
+                current = 0;
+                link = playlist.find('a')[0];
+            }else{
+                link = playlist.find('a')[current];    
+            }
+            run($(link),audio[0]);
+        });
+    }
+    function run(link, player){
+        player.src = link.attr('href');
+        par = link.parent();
+        par.addClass('active').siblings().removeClass('active');
+        audio[0].load();
+        audio[0].play();
+    }
+});//]]> 
+
+</script>
+
+<script id="vertex-shader" type="x-shader/x-vertex">
+precision mediump float;
+
+attribute vec4 vPosition;
+attribute vec4 vColor;
+attribute vec4 vNormal;
+attribute vec4 vBiNormal;
+attribute vec4 vTangent;
+attribute vec2 vTexCoord;
+
+varying vec4 fPosition;
+varying vec4 fColor;
+varying vec4 fNormal;
+varying vec4 fBNormal;
+varying vec4 fTangent;
+varying vec2 fTexCoord;
+
+uniform mat4 modelingMatrix;
+uniform mat4 viewingMatrix;
+uniform mat4 projectionMatrix;
+uniform float volume;
+uniform float ball;
+
+
+void main()
+{
+    vec4 vertex = vPosition;
+    vec4 N = normalize( modelingMatrix * vNormal );	// Normal vector
+    vec4 BN = normalize( modelingMatrix * vBiNormal );
+    vec4 T = normalize( modelingMatrix * vTangent );
+
+    fPosition = modelingMatrix * vPosition;
+    fColor = vColor;
+    fNormal = N;
+    fBNormal = BN;
+    fTangent = T;
+    fTexCoord = vTexCoord;
+
+    	// Scale the vertex with the audio volume
+    	//vertex.x *= 1.0 + volume; //add
+    	//vertex.y *= 1.0 + volume; //add
+    	vertex.z *= 1.0 + volume;
+
+    	
+        gl_Position = projectionMatrix * viewingMatrix * modelingMatrix * vertex;
+    }
+    </script>
+
+    <script id="fragment-shader" type="x-shader/x-fragment">
+    precision mediump float;
+
+    // Note that the following are interpolated between vertices.
+    varying vec4 fPosition;
+    varying vec4 fColor;  
+    varying vec4 fNormal;
+    varying vec4 fBNormal;
+    varying vec4 fTangent;
+    varying vec2 fTexCoord;
+
+    uniform sampler2D texture;
+
+    uniform mat4 modelingMatrix;
+    uniform mat4 viewingMatrix;
+    uniform mat4 projectionMatrix;
+    uniform mat4 lightMatrix;
+    uniform vec4 lightPosition;
+    uniform vec4 materialAmbient;
+    uniform vec4 materialDiffuse;
+    uniform vec4 materialSpecular;
+    uniform float shininess;
+    uniform float volume;
+    uniform float ball;
+    void main()
+    {
+
+
+    	vec4 eye = vec4(0.0, 0.0, 2.0, 1.0);  // The default eye position
+        vec4 L = normalize( lightMatrix*lightPosition - fPosition ); // Light vector
+        vec4 N = fNormal;	// Normal vector
+    	vec4 V = normalize( eye - fPosition );		// Eye vector.
+        vec4 H = normalize( L + V );  // Halfway vector in the modified Phong model
+
+    	// Normal variation stored in the texture is within [0,1]. Convert it to [-1, 1]
+    	vec4 texel = texture2D( texture, fTexCoord ) * 2.0 - 1.0;
+    	N=N+ texel.x*fBNormal + texel.y*fTangent;
+    	N = normalize( N );
+    	
+        // Compute terms in the illumination equation
+        vec4 ambient = materialAmbient;
+
+        float Kd = max( dot(L, N), 0.0 );
+        vec4  diffuse = Kd * materialDiffuse;
+
+        float Ks = pow( max(dot(N, H), 0.0), shininess );
+        vec4  specular = Ks * materialSpecular;
+
+        if(ball==1.0)
+        {
+            gl_FragColor = (ambient + diffuse)*fColor  + specular;
+        }
+        else
+        {
+        //gl_FragColor = (ambient + diffuse) * texture2D( texture, fTexCoord ) + specular;
+        //gl_FragColor = (ambient + diffuse) * (0.5+fPosition*0.5) + specular;
+        //gl_FragColor = (ambient + diffuse) * (volume*0.5) * (0.5+fPosition*0.5) + specular;
+        gl_FragColor = (ambient + diffuse) * (volume*0.1 + fPosition*3.0) + specular;
+        //gl_FragColor = (ambient + diffuse) * (1.0+volume*0.5) + specular;
+        //gl_FragColor = (ambient + diffuse) * fColor + specular;
+    }
+
+
+
+
+}
+</script>
+
+
+</head>
+
+
+<body background="background.jpg">
+<!--<body style="background-color:black">-->
+
+    <canvas align="center" id ="gl-canvas" width="800" height="800" >
+        Oops ... your browser doesn't support the HTML5 canvas element
+    </canvas>
+    <br/>
+    <div style="text-align:center;">
+        <button id="xButton" class="RotateButton">Rotate X</button>
+        <button id="yButton" class="RotateButton">Rotate Y</button>
+        <button id="zButton" class="RotateButton">Rotate Z</button>
+        <button id="pButton" class="myButtonWhite">Pause</button>
+
+
+
+        
+        
+        <!--<button id="dButton" style="background-color:#6688cc">Depth Test</button>-->
+    <div/>
+    <ul id="playlist">
+            <li class="active"><a href="Sleep Away.mp3">Sleep Away</a></li>
+            <li><a href="torisetsu.mp3">西野カナ - トリセツ</a></li>
+            <li><a href="Blank Space.m4a">Taylor Swift - Blank Space</a></li>
+            <li><a href="123.mp3">蔣卓嘉 - 預告</a></li>
+            <li>p.s.moodle空間不夠，僅上傳前兩首歌</li>
+        </ul>
+        <br/>
+
+
+    <audio id="myAudio" controls="controls" loop="loop">
+          <source src="Sleep Away.mp3" >
+    </audio>
+
+
+</html>
